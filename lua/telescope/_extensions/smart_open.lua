@@ -15,6 +15,7 @@ local smart_open = function(opts)
   opts.current_buffer = vim.fn.bufnr("%") > 0 and vim.api.nvim_buf_get_name(vim.fn.bufnr("%")) or ""
   opts.alternate_buffer = vim.fn.bufnr("#") > 0 and vim.api.nvim_buf_get_name(vim.fn.bufnr("#")) or ""
   opts.filename_first = opts.filename_first == nil and true or opts.filename_first
+  opts.show_scores = opts.show_scores == nil and false or opts.filename_first
 
   opts.config = config
 
