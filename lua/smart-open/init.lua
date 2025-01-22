@@ -10,6 +10,8 @@ local function set_config(opt_name, value)
   end
 end
 
+local db_by_path = {}
+
 return {
   config = config,
   setup = function(ext_config)
@@ -19,10 +21,13 @@ return {
     set_config("match_algorithm", ext_config.match_algorithm)
     set_config("cwd_only", ext_config.cwd_only)
     set_config("buffer_indicators", ext_config.buffer_indicators)
+    set_config("mappings", ext_config.mappings)
+    set_config("result_limit", ext_config.result_limit)
 
     config.db_filename = vim.fn.stdpath("data") .. "/smart_open.sqlite3"
 
-    local db = DbClient:new({ path = config.db_filename })
-    history:setup(db, config)
+    db_by_path[config.db_filename] = db_by_path[config.db_filename] or DbClient:new({ path = config.db_filename })
+
+    history:setup(db_by_path[config.db_filename], config)
   end,
 }

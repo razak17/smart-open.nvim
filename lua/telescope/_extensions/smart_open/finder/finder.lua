@@ -13,6 +13,7 @@ local virtual_name = require("smart-open.util.virtual_name")
 --- * cwd_only boolean If true, only returns results under cwd
 --- * ignore_patterns table
 --- * match_algorithm string 'fzy' (default) or 'fzf'
+--- * result_limit number
 return function(history, opts, context)
   local results = {}
   local db_results = {}
@@ -20,7 +21,10 @@ return function(history, opts, context)
 
   local history_result, max_score = history:get_all(opts.cwd_only and opts.cwd)
 
-  local match_runner = create_multithread_matcher(opts.match_algorithm, context)
+  local match_runner = create_multithread_matcher({
+    match_algorithm = opts.match_algorithm,
+    result_limit = opts.result_limit,
+  }, context)
 
   for _, v in ipairs(history_result) do
     if v.exists then
@@ -65,16 +69,21 @@ return function(history, opts, context)
     __call = function(_, prompt, process_result, process_complete)
       results = {}
 
-      if prompt == "" and #db_results >= 50 then
+      local result_limit = opts.result_limit or 50
+
+      if prompt == "" and #db_results >= result_limit then
         for _, result in pairs(db_results) do
-          priority_insert(results, 50, result, function(x)
+          priority_insert(results, result_limit, result, function(x)
             return x.base_score
           end)
         end
 
         for _, v in ipairs(results) do
-          local to_insert =
-            vim.tbl_extend("keep", { ordinal = v.base_score, display = opts.display, prompt = prompt }, v)
+          local to_insert = vim.tbl_extend(
+            "keep",
+            { ordinal = v.base_score, display = opts.display, prompt = prompt },
+            v
+          )
           if process_result(to_insert) then
             break
           end
@@ -87,10 +96,13 @@ return function(history, opts, context)
       match_runner.init(
         prompt,
         vim.schedule_wrap(function(entry)
-          local to_insert =
-            vim.tbl_extend("keep", { ordinal = entry.relevance, display = opts.display, prompt = prompt }, entry)
+          local to_insert = vim.tbl_extend(
+            "keep",
+            { ordinal = entry.relevance, display = opts.display, prompt = prompt },
+            entry
+          )
 
-          priority_insert(results, 50, to_insert, function(e)
+          priority_insert(results, result_limit, to_insert, function(e)
             return e.relevance or e.base_score
           end)
 

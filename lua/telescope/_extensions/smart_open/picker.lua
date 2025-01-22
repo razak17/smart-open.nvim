@@ -8,6 +8,7 @@ local action_state = require("telescope.actions.state")
 local telescope_config = require("telescope.config").values
 local history = require("telescope._extensions.smart_open.history")
 local make_display = require("telescope._extensions.smart_open.display.make_display")
+local smart_open_actions = require("smart-open.actions")
 
 local picker
 local M = {}
@@ -36,6 +37,7 @@ function M.start(opts)
     ignore_patterns = vim.F.if_nil(opts.ignore_patterns, config.ignore_patterns),
     show_scores = vim.F.if_nil(opts.show_scores, config.show_scores),
     match_algorithm = opts.match_algorithm or config.match_algorithm,
+    result_limit = vim.F.if_nil(opts.result_limit, config.result_limit),
   }, context)
   opts.get_status_text = finder.get_status_text
 
@@ -45,39 +47,44 @@ function M.start(opts)
       return { prompt = query_text }
     end,
     attach_mappings = function(_, map)
-      actions.select_default:replace(function(prompt_bufnr)
-        local selection = action_state.get_selected_entry()
-        if not selection then
-          actions.close(prompt_bufnr)
-          return
-        end
-        if current ~= selection.path then
-          history:record_usage(selection.path, true)
-        end
-        local original_weights = db:get_weights(weights.default_weights)
-        local revised_weights = weights.revise_weights(original_weights, finder.results, selection)
-        db:save_weights(revised_weights)
-        actions.file_edit(prompt_bufnr)
-      end)
-      map("i", "<C-c>", function()
-        local selection = action_state.get_selected_entry()
+      actions.select_default:enhance({
+        pre = function(prompt_bufnr)
+          local selection = action_state.get_selected_entry()
+          if not selection then
+            actions.close(prompt_bufnr)
+            return
+          end
+          if current ~= selection.path then
+            history:record_usage(selection.path, true)
+          end
+          local original_weights = db:get_weights(weights.default_weights)
+          local revised_weights = weights.revise_weights(original_weights, finder.results, selection)
+          db:save_weights(revised_weights)
+        end,
+      })
 
-        if not pcall(function()
-          vim.api.nvim_buf_delete(selection.buf, { force = true })
-        end) then
-          return
+      local applied_mappings = { n = {}, i = {} }
+
+      if config.mappings then
+        for mode, mode_map in pairs(config.mappings) do
+          mode = string.lower(mode)
+
+          for key_bind, key_func in pairs(mode_map) do
+            local key_bind_internal = vim.api.nvim_replace_termcodes(key_bind, true, true, true)
+
+            applied_mappings[mode][key_bind_internal] = true
+
+            map(mode, key_bind, key_func)
+          end
         end
+      end
 
-        selection.buf = nil
+      local key_bind_internal = vim.api.nvim_replace_termcodes("<C-w>", true, true, true)
 
-        -- Now that the buffer is deleted, refresh the entry to reflect it
-        local original_selection_strategy = picker.selection_strategy
-        picker.selection_strategy = "row"
-        picker:refresh(finder)
-        vim.defer_fn(function()
-          picker.selection_strategy = original_selection_strategy
-        end, 50)
-      end)
+      if not applied_mappings.i[key_bind_internal] then
+        map("i", "<C-w>", smart_open_actions.delete_buffer)
+      end
+
       return true
     end,
     finder = finder,
